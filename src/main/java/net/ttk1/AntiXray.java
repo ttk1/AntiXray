@@ -71,9 +71,11 @@ public class AntiXray extends JavaPlugin {
             Location loc = block.getLocation();
 
             if(map.containsKey(loc)) {
-                getLogger().info("Block retrieved");
-                block.setType(map.get(loc));
-                map.remove(loc);
+                if (isSurface(block)) {
+                    getLogger().info("Block retrieved");
+                    block.setType(map.get(loc));
+                    map.remove(loc);
+                }
             }
         }
 
