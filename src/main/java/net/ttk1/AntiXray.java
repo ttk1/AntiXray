@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.bukkit.Chunk;
+import org.bukkit.ChunkSnapshot;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -13,6 +14,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import com.sun.javafx.scene.CssFlags;
 
 public class AntiXray extends JavaPlugin {
     Map<Location, Material> map = new HashMap<>();
@@ -28,7 +31,7 @@ public class AntiXray extends JavaPlugin {
         getLogger().info("Retrieving all hidden blocks");
         for (Location loc: map.keySet()) {
             Block block = loc.getBlock();
-            block.setType(map.get(loc));
+            block.setType(map.get(loc), false);
         }
         getLogger().info("AntiXray disabled");
     }
@@ -48,17 +51,18 @@ public class AntiXray extends JavaPlugin {
                 for (int y = 0; y <= 255; y++) {
                     for (int z = 0; z <= 15; z++) {
                         Block block = chunk.getBlock(x, y, z);
+                        Material before = block.getType();
                         // 鉱石ブロックか確認
                         if (isOre(block)) {
                             // ブロックの明るさが0 == 視認不可能
                             if (!isSurface(block)) {
-                                getLogger().info("Block hided");
-                                Material type = block.getType();
-                                Location loc = block.getLocation();
-                                map.put(loc, type);
-                                // blockを隠ぺい（石に偽装）
-                                block.setType(Material.STONE);
+                                hideBlock(block);
                             }
+                        }
+                        Material after = block.getType();
+
+                        if (!before.equals(after)) {
+                            getLogger().info(block.getLocation().toString());
                         }
                     }
                 }
@@ -70,12 +74,28 @@ public class AntiXray extends JavaPlugin {
             Block block = event.getBlock();
             Location loc = block.getLocation();
 
-            if(map.containsKey(loc)) {
+            if (map.containsKey(loc)) {
                 if (isSurface(block)) {
                     getLogger().info("Block retrieved");
-                    block.setType(map.get(loc));
+                    block.setType(map.get(loc), false);
                     map.remove(loc);
+                    return;
                 }
+                return;
+            } else if (isOre(block) && !isSurface(block)) {
+                hideBlock(block);
+                return;
+            }
+        }
+
+        private void hideBlock(Block block) {
+            Material type = block.getType();
+            Location loc = block.getLocation();
+            if (!map.containsKey(loc)) {
+                map.put(loc, type);
+                getLogger().info("Block hided");
+                // blockを隠ぺい（石に偽装）
+                block.setType(Material.STONE, false);
             }
         }
 
@@ -94,6 +114,13 @@ public class AntiXray extends JavaPlugin {
                     block.getRelative(BlockFace.SOUTH).getType().equals(Material.AIR) ||
                     block.getRelative(BlockFace.EAST).getType().equals(Material.AIR) ||
                     block.getRelative(BlockFace.NORTH).getType().equals(Material.AIR)) {
+                return true;
+            }
+            return false;
+        }
+
+        private boolean isSurface2(Block block) {
+            if (block.getLightFromBlocks() > 0x00 || block.getLightFromSky() > 0x00) {
                 return true;
             }
             return false;
