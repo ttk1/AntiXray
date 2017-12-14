@@ -6,15 +6,14 @@
       <name>AntiXray</name>
       <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <java.version>1.8</java.version>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
       </properties>
       <repositories>
         <repository>
               <id>spigot-repo</id>
               <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
-        </repository>
-           <repository>
-              <id>dmulloy2-repo</id>
-              <url>http://repo.dmulloy2.net/nexus/repository/public/</url>
         </repository>
       </repositories>
       <dependencies>
@@ -24,11 +23,6 @@
               <artifactId>spigot-api</artifactId>
               <version>1.12.2-R0.1-SNAPSHOT</version>
               <scope>provided</scope>
-        </dependency>
-        <dependency>
-              <groupId>com.comphenix.protocol</groupId>
-              <artifactId>ProtocolLib-API</artifactId>
-              <version>4.3.0</version>
         </dependency>
       </dependencies>
       <build>

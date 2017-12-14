@@ -1,85 +1,101 @@
 package net.ttk1;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import org.bukkit.Chunk;
+import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.entity.Player;
+import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import com.comphenix.protocol.PacketType;
-import com.comphenix.protocol.PacketType.Protocol;
-import com.comphenix.protocol.ProtocolLibrary;
-import com.comphenix.protocol.ProtocolManager;
-import com.comphenix.protocol.events.PacketContainer;
-import com.comphenix.protocol.events.PacketEvent;
-import com.comphenix.protocol.wrappers.ChunkPosition;
-
 public class AntiXray extends JavaPlugin {
+    Map<MyPosition, Material> map = new HashMap<>();
+
     @Override
     public void onEnable() {
-        getServer().getPluginManager().registerEvents(new BlockHider(), this);
+        getServer().getPluginManager().registerEvents(new BlockHider(map), this);
         getLogger().info("AntiXray enabled");
     }
 
     @Override
     public void onDisable() {
+        getLogger().info("Retrieving all hidden blocks");
+        for (MyPosition p: map.keySet()) {
+            World world = getServer().getWorld(p.getWorldName());
+            Block block = world.getBlockAt(p.getX(), p.getY(), p.getZ());
+            block.setType(map.get(p));
+        }
         getLogger().info("AntiXray disabled");
     }
 
     class BlockHider implements Listener {
-        Map<String, List<MyPosition>> map = new HashMap<>();
-        ProtocolManager  protocolManager = ProtocolLibrary.getProtocolManager();
+        Map<MyPosition, Material> map;
+
+        BlockHider(Map<MyPosition, Material> map){
+            this.map = map;
+        }
 
         @EventHandler
-        public void onChunkLoadEvent(PacketEvent event) {
-            if (event.getPacketType() == PacketType.Play.Server.MAP_CHUNK) {
-                ChunkPosition cp = event.getPacket().getPositionModifier().readSafely(0);
-                Player player = event.getPlayer();
-                World currentWorld = player.getWorld();
-                MyPosition mp = new MyPosition(cp.getX(), cp.getY(), cp.getZ(), currentWorld.getName());
-
-                // すでに送信済みのパケットは再送しない
-                String uuid = player.getUniqueId().toString();
-                if (map.containsKey(uuid)) {
-                    List<MyPosition> positions = map.get(uuid);
-                    if (positions.contains(mp)) {
-                        // listからmpを削除し送信済みとして扱う
-                        positions.remove(mp);
-                        // eventのキャンセルはせずそのままreturn
-                        return;
-                    } else {
-                        // 未送信としてmpをlistに追加
-                        positions.add(mp);
+        public void onChunkLoadEvent(ChunkLoadEvent event) {
+            Chunk chunk = event.getChunk();
+            // chunk内のブロックを列挙
+            for (int x = 0; x <= 15; x++) {
+                for (int y = 0; y <= 255; y++) {
+                    for (int z = 0; z <= 15; z++) {
+                        Block block = chunk.getBlock(x, y, z);
+                        // 鉱石ブロックか確認
+                        if (isOre(block)) {
+                            // ブロックの明るさが0 == 視認不可能
+                            if (!isSurface(block)) {
+                                getLogger().info("Block hided");
+                                Material type = block.getType();
+                                MyPosition p = new MyPosition(x, y, z, chunk.getWorld().toString());
+                                map.put(p, type);
+                                // blockを隠ぺい（石に偽装）
+                                block.setType(Material.STONE);
+                            }
+                        }
                     }
-                } else {
-                    List<MyPosition> positions = new ArrayList<>();
-                    map.put(uuid, positions);
                 }
-
-                // ラッパークラスのMyChunkのインスタンスを生成しプレーヤーに送信
-                event.setCancelled(true);
-                PacketContainer sendChunk = protocolManager.createPacket(PacketType.Play.Server.MAP_CHUNK);
-
-                //Chunk chunk = currentWorld.getChunkAt(cp.getX(), cp.getZ());
-                //event.getPlayer().getUniqueId().toString();
             }
-/*            Chunk chunk = event.getChunk();
-            if (!(chunk instanceof MyChunk)) {
-                chunk.unload();
-                MyChunk myChunk = new MyChunk(event.getChunk(), getLogger());
-                //ChunkLoadEvent event2 = new ChunkLoadEvent(myChunk, event.isNewChunk());
-                //Bukkit.getPluginManager().callEvent(event2);
-                getLogger().info("AntiXray :chunk loaded");
-            } else {
-                chunk.unload();
-            }*/
+        }
+
+        @EventHandler
+        public void onBlockPhysicsEvent(BlockPhysicsEvent event) {
+            Block block = event.getBlock();
+
+            int x = block.getX();
+            int y = block.getY();
+            int z = block.getZ();
+            String worldname = block.getWorld().toString();
+            MyPosition p = new MyPosition(x, y, z, worldname);
+
+            if(map.containsKey(p)) {
+                getLogger().info("Block retrieved");
+                block.setType(map.get(p));
+                map.remove(p);
+            }
+        }
+
+        // 隠ぺいしたいブロックの場合true, それ以外false
+        private boolean isOre(Block block) {
+            if (block.getType().equals(Material.DIAMOND_ORE) || block.getType().equals(Material.COAL_ORE)) {
+                return true;
+            }
+            return false;
+        }
+
+        // blockの周囲の明るさが0でなければtrue
+        private boolean isSurface(Block block) {
+            if (block.getLightFromBlocks() == 0x00 && block.getLightFromSky() == 0x00) {
+                return true;
+            }
+            return false;
         }
     }
 }
