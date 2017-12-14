@@ -4,9 +4,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.bukkit.Chunk;
+import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPhysicsEvent;
@@ -14,7 +15,7 @@ import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class AntiXray extends JavaPlugin {
-    Map<MyPosition, Material> map = new HashMap<>();
+    Map<Location, Material> map = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -25,23 +26,22 @@ public class AntiXray extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("Retrieving all hidden blocks");
-        for (MyPosition p: map.keySet()) {
-            World world = getServer().getWorld(p.getWorldName());
-            Block block = world.getBlockAt(p.getX(), p.getY(), p.getZ());
-            block.setType(map.get(p));
+        for (Location loc: map.keySet()) {
+            Block block = loc.getBlock();
+            block.setType(map.get(loc));
         }
         getLogger().info("AntiXray disabled");
     }
 
     class BlockHider implements Listener {
-        Map<MyPosition, Material> map;
+        Map<Location, Material> map;
 
-        BlockHider(Map<MyPosition, Material> map){
+        BlockHider(Map<Location, Material> map){
             this.map = map;
         }
 
         @EventHandler
-        public void onChunkLoadEvent(ChunkLoadEvent event) {
+        public synchronized void onChunkLoadEvent(ChunkLoadEvent event) {
             Chunk chunk = event.getChunk();
             // chunk内のブロックを列挙
             for (int x = 0; x <= 15; x++) {
@@ -54,8 +54,8 @@ public class AntiXray extends JavaPlugin {
                             if (!isSurface(block)) {
                                 getLogger().info("Block hided");
                                 Material type = block.getType();
-                                MyPosition p = new MyPosition(x, y, z, chunk.getWorld().toString());
-                                map.put(p, type);
+                                Location loc = block.getLocation();
+                                map.put(loc, type);
                                 // blockを隠ぺい（石に偽装）
                                 block.setType(Material.STONE);
                             }
@@ -66,19 +66,14 @@ public class AntiXray extends JavaPlugin {
         }
 
         @EventHandler
-        public void onBlockPhysicsEvent(BlockPhysicsEvent event) {
+        public synchronized void onBlockPhysicsEvent(BlockPhysicsEvent event) {
             Block block = event.getBlock();
+            Location loc = block.getLocation();
 
-            int x = block.getX();
-            int y = block.getY();
-            int z = block.getZ();
-            String worldname = block.getWorld().toString();
-            MyPosition p = new MyPosition(x, y, z, worldname);
-
-            if(map.containsKey(p)) {
+            if(map.containsKey(loc)) {
                 getLogger().info("Block retrieved");
-                block.setType(map.get(p));
-                map.remove(p);
+                block.setType(map.get(loc));
+                map.remove(loc);
             }
         }
 
@@ -90,9 +85,13 @@ public class AntiXray extends JavaPlugin {
             return false;
         }
 
-        // blockの周囲の明るさが0でなければtrue
         private boolean isSurface(Block block) {
-            if (block.getLightFromBlocks() == 0x00 && block.getLightFromSky() == 0x00) {
+            if (block.getRelative(BlockFace.DOWN).getType().equals(Material.AIR) ||
+                    block.getRelative(BlockFace.UP).getType().equals(Material.AIR) ||
+                    block.getRelative(BlockFace.WEST).getType().equals(Material.AIR) ||
+                    block.getRelative(BlockFace.SOUTH).getType().equals(Material.AIR) ||
+                    block.getRelative(BlockFace.EAST).getType().equals(Material.AIR) ||
+                    block.getRelative(BlockFace.NORTH).getType().equals(Material.AIR)) {
                 return true;
             }
             return false;
