@@ -1,84 +1,85 @@
 package net.ttk1;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
+import org.bukkit.Chunk;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockFromToEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.PacketType.Protocol;
+import com.comphenix.protocol.ProtocolLibrary;
+import com.comphenix.protocol.ProtocolManager;
+import com.comphenix.protocol.events.PacketContainer;
+import com.comphenix.protocol.events.PacketEvent;
+import com.comphenix.protocol.wrappers.ChunkPosition;
 
 public class AntiXray extends JavaPlugin {
     @Override
     public void onEnable() {
-        getServer().getPluginManager().registerEvents(new LavaFlow(), this);
-        getLogger().info("InfiniteLava enabled");
+        getServer().getPluginManager().registerEvents(new BlockHider(), this);
+        getLogger().info("AntiXray enabled");
     }
 
     @Override
     public void onDisable() {
-        getLogger().info("InfiniteLava disabled");
+        getLogger().info("AntiXray disabled");
     }
 
-    class LavaFlow implements Listener {
+    class BlockHider implements Listener {
+        Map<String, List<MyPosition>> map = new HashMap<>();
+        ProtocolManager  protocolManager = ProtocolLibrary.getProtocolManager();
+
         @EventHandler
-        public void onBlockFromTo(BlockFromToEvent event) {
-            Block block = event.getToBlock();
-            if(count(block) >= 2) {
+        public void onChunkLoadEvent(PacketEvent event) {
+            if (event.getPacketType() == PacketType.Play.Server.MAP_CHUNK) {
+                ChunkPosition cp = event.getPacket().getPositionModifier().readSafely(0);
+                Player player = event.getPlayer();
+                World currentWorld = player.getWorld();
+                MyPosition mp = new MyPosition(cp.getX(), cp.getY(), cp.getZ(), currentWorld.getName());
+
+                // すでに送信済みのパケットは再送しない
+                String uuid = player.getUniqueId().toString();
+                if (map.containsKey(uuid)) {
+                    List<MyPosition> positions = map.get(uuid);
+                    if (positions.contains(mp)) {
+                        // listからmpを削除し送信済みとして扱う
+                        positions.remove(mp);
+                        // eventのキャンセルはせずそのままreturn
+                        return;
+                    } else {
+                        // 未送信としてmpをlistに追加
+                        positions.add(mp);
+                    }
+                } else {
+                    List<MyPosition> positions = new ArrayList<>();
+                    map.put(uuid, positions);
+                }
+
+                // ラッパークラスのMyChunkのインスタンスを生成しプレーヤーに送信
                 event.setCancelled(true);
-                replace(block);
-            }
-        }
-        @EventHandler
-        public void onBlockPlace(BlockPlaceEvent event) {
-            Block placed = event.getBlockPlaced();
-            if (isSource(placed)) {
-                for(Block adj: getAround(placed)) {
-                    if (count(adj) >= 2) {
-                        replace(adj);
-                    }
-                }
-            }
-        }
+                PacketContainer sendChunk = protocolManager.createPacket(PacketType.Play.Server.MAP_CHUNK);
 
-        private List<Block> getAround(Block block) {
-            List<Block> blocks = new ArrayList<Block>();
-            blocks.add(block.getRelative(BlockFace.EAST));
-            blocks.add(block.getRelative(BlockFace.WEST));
-            blocks.add(block.getRelative(BlockFace.NORTH));
-            blocks.add(block.getRelative(BlockFace.SOUTH));
-            return blocks;
-        }
-
-        private void replace(Block block) {
-            block.setType(Material.LAVA);
-            block.setData((byte)0x0,true);
-        }
-
-        private int count(Block block) {
-            if (block.getType() == Material.LAVA) {
-                int counter = 0;
-                for (Block adj: getAround(block)) {
-                    if (isSource(adj)) {
-                        counter++;
-                    }
-                }
-                return counter;
+                //Chunk chunk = currentWorld.getChunkAt(cp.getX(), cp.getZ());
+                //event.getPlayer().getUniqueId().toString();
             }
-            return 0;
-        }
-
-        private boolean isSource(Block block) {
-            if (block.getType() == Material.LAVA || block.getType() == Material.STATIONARY_LAVA) {
-                if (block.getData() == (byte) 0x0) {
-                    return true;
-                }
-            }
-            return false;
+/*            Chunk chunk = event.getChunk();
+            if (!(chunk instanceof MyChunk)) {
+                chunk.unload();
+                MyChunk myChunk = new MyChunk(event.getChunk(), getLogger());
+                //ChunkLoadEvent event2 = new ChunkLoadEvent(myChunk, event.isNewChunk());
+                //Bukkit.getPluginManager().callEvent(event2);
+                getLogger().info("AntiXray :chunk loaded");
+            } else {
+                chunk.unload();
+            }*/
         }
     }
 }
